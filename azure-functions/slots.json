@@ -1,0 +1,5 @@
+[
+  {"slotId":"fall26-mid-mw-0900","period":"mid","pattern":"MW","classStart":"09:00","classEnd":"10:40","examDate":"2026-10-21","examStart":"09:00","examEnd":"10:40","timeZone":"Africa/Nairobi","sourcePage":1},
+  {"slotId":"fall26-final-mw-0900","period":"final","pattern":"MW","classStart":"09:00","classEnd":"10:40","examDate":"2026-12-09","examStart":"09:00","examEnd":"10:40","timeZone":"Africa/Nairobi","sourcePage":2},
+  {"slotId":"fall26-final-fri-0800","period":"final","pattern":"FRI","classStart":"08:00","classEnd":"11:20","examDate":"2026-12-11","examStart":"08:00","examEnd":"11:20","timeZone":"Africa/Nairobi","sourcePage":2}
+]
