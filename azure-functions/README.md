@@ -1,6 +1,6 @@
 # Exam Planner lookup for Azure Functions
 
-The Python v2 HTTP function serves GET /exam-slots using three sample timetable rows. The sample data is for the first milestone. The full dataset, database, reminder timer and student UI are pending.
+The Python v2 app serves the Fall 2026 undergraduate timetable at GET /exam-slots. Students can save exams at POST /saved-exams and retrieve them at GET /saved-exams. PUT /saved-exams/{id}/reminder accepts a JSON integer minutesBefore. A timer checks pending reminders each minute. GET /inbox lists published reminders for the current session. Reminder fields are stored on the owning SavedExams row. The student UI is pending.
 
 ## Run locally
 

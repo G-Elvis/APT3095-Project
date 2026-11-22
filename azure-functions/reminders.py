@@ -86,3 +86,25 @@ def publish_due_reminders():
             except (ResourceModifiedError, ResourceNotFoundError):
                 continue
     logging.info("Published %d due exam reminders", published)
+
+
+def list_inbox(req):
+    session, is_new = session_from(req)
+    if is_new:
+        return reply(200, [], session)
+    try:
+        with open_table() as table:
+            rows = table.query_entities(
+                "PartitionKey eq @session and reminderStatus eq 'published'",
+                parameters={"session": session},
+            )
+            notices = [
+                {"reminderId": row["RowKey"], "savedExamId": row["RowKey"],
+                 "courseLabel": row["courseLabel"], "dueAt": row["reminderDueAt"],
+                 "status": "published", "publishedAt": row["reminderPublishedAt"]}
+                for row in rows
+            ]
+        return reply(200, sorted(notices, key=lambda item: item["publishedAt"], reverse=True))
+    except (AzureError, KeyError, ValueError) as error:
+        logging.error("Inbox storage operation failed: %s", type(error).__name__)
+        return reply(503, {"error": "Reminder storage is unavailable"})
