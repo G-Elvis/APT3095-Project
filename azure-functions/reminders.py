@@ -64,3 +64,25 @@ def set_reminder(req):
     except (AzureError, KeyError, ValueError) as error:
         logging.error("Reminder storage operation failed: %s", type(error).__name__)
         return reply(503, {"error": "Reminder storage is unavailable"})
+
+
+def publish_due_reminders():
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    published = 0
+    with open_table() as table:
+        rows = table.query_entities(
+            "reminderStatus eq 'pending' and reminderDueAt le @now",
+            parameters={"now": now},
+        )
+        for row in rows:
+            try:
+                table.update_entity(
+                    {"PartitionKey": row["PartitionKey"], "RowKey": row["RowKey"],
+                     "reminderStatus": "published", "reminderPublishedAt": now},
+                    mode=UpdateMode.MERGE, etag=row.metadata["etag"],
+                    match_condition=MatchConditions.IfNotModified,
+                )
+                published += 1
+            except (ResourceModifiedError, ResourceNotFoundError):
+                continue
+    logging.info("Published %d due exam reminders", published)

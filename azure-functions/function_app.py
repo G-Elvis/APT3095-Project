@@ -3,7 +3,7 @@ import json
 import azure.functions as func
 
 from planner import lookup
-from reminders import set_reminder
+from reminders import publish_due_reminders, set_reminder
 from saved_exams import handle_saved_exams
 
 app = func.FunctionApp()
@@ -27,3 +27,8 @@ def saved_exams(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="saved-exams/{id}/reminder", methods=["PUT"], auth_level=func.AuthLevel.ANONYMOUS)
 def exam_reminder(req: func.HttpRequest) -> func.HttpResponse:
     return set_reminder(req)
+
+
+@app.timer_trigger(schedule="0 * * * * *", arg_name="timer", use_monitor=True)
+def reminder_timer(timer: func.TimerRequest) -> None:
+    publish_due_reminders()
