@@ -44,6 +44,10 @@
   button:disabled { opacity:.65; cursor:wait; }
   :focus-visible { outline:3px solid #ad7400; outline-offset:3px; }
   output { display:block; color:var(--muted); font-size:.9rem; margin-top:.6rem; overflow-wrap:anywhere; }
+  .reminder-options { display:grid; gap:.35rem; margin:0; padding:.55rem .8rem; border:1px solid var(--line); }
+  .reminder-options label { display:flex; align-items:center; gap:.65rem; min-height:2rem; }
+  .reminder-options input { width:1rem; min-height:auto; height:1rem; accent-color:var(--blue); }
+  #scheduled-reminders button { display:block; background:transparent; color:var(--blue); }
   output:empty, ul:empty { display:none; }
   ul { margin:.5rem 0 1rem; padding:0; list-style:none; }
   li { padding:.65rem 0; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
@@ -79,7 +83,7 @@
     <div class="wrap">
       <p class="term">Undergraduate</p>
       <h1>USIU Exam Planner <span>&amp; Reminder</span></h1>
-      <p>Find your exam slot, save it, and set a reminder.</p>
+      <p>Find your exam slot, save it, and set reminders.</p>
     </div>
   </header>
   <div class="wrap workspace">
@@ -108,12 +112,23 @@
     <form id="reminder" hidden>
       <label for="exam">Saved exam</label>
       <select id="exam" required></select>
-      <label for="minutes">Remind me this many minutes before the exam</label>
-      <input id="minutes" type="number" min="1" max="525600" step="1" value="60" required>
-      <button>Set reminder</button>
+      <fieldset class="reminder-options">
+        <legend>Remind me before the exam</legend>
+        <label><input type="checkbox" name="preset" value="10080"> 1 week</label>
+        <label><input type="checkbox" name="preset" value="1440"> 1 day</label>
+        <label><input type="checkbox" name="preset" value="180"> 3 hours</label>
+        <label><input type="checkbox" name="preset" value="60"> 1 hour</label>
+      </fieldset>
+      <label for="minutes">Custom minutes before the exam (optional)</label>
+      <input id="minutes" type="number" min="1" max="525600" step="1">
+      <button>Add reminders</button>
     </form>
     <output id="saved-status" role="status"></output>
     <output id="reminder-status" role="status"></output>
+    <div id="scheduled" hidden>
+      <h3>Scheduled reminders</h3>
+      <ul id="scheduled-reminders"></ul>
+    </div>
   </section>
   <section id="reminders" aria-labelledby="inbox-heading">
     <h2 id="inbox-heading">Reminder inbox</h2>
@@ -180,14 +195,18 @@
       return option;
     }));
     byId('reminder').hidden = eligible.length === 0;
+    refreshScheduled();
     byId('saved-status').textContent = !exams.length ? 'No exams saved in this session.'
       : !eligible.length ? 'No saved exams have time left to schedule a reminder.' : '';
   }
 
+  const countdown = new Map([[10080, 'Exam in 1 week'], [1440, 'Exam in 1 day'],
+    [180, 'Exam in 3 hours'], [60, 'Exam in 1 hour']]);
+
   async function loadInbox() {
     const notices = await api('/inbox');
     list('notices', notices.map(notice =>
-      `${notice.courseLabel} · Published ${nairobi.format(new Date(notice.publishedAt))} (Nairobi)`
+      `${notice.courseLabel} · ${countdown.get(notice.minutesBefore) || "Exam reminder"} · Published ${nairobi.format(new Date(notice.publishedAt))} (Nairobi)`
     ));
     return notices.length ? '' : 'No published reminders yet.';
   }
@@ -250,22 +269,77 @@
     return 'Exam saved.';
   });
 
+  function reminderRequest(id, body) {
+    return api(`/saved-exams/${encodeURIComponent(id)}/reminder`, 'PUT', body);
+  }
+
+  function showScheduled(id, reminders) {
+    if (byId('exam').value !== id) return;
+    const pending = reminders.filter(r => r.status === 'pending')
+      .sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+    byId('scheduled').hidden = !pending.length;
+    byId('scheduled-reminders').replaceChildren(...pending.map(reminder => {
+      const item = document.createElement('li');
+      const label = `${nairobi.format(new Date(reminder.dueAt))} (Nairobi)`;
+      item.textContent = reminder.minutesBefore ?
+        `${countdown.get(reminder.minutesBefore) || reminder.minutesBefore + " minutes before"} · ${label}` : label;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = 'Remove';
+      remove.setAttribute('aria-label', `Remove reminder for ${label}`);
+      remove.addEventListener('click', async () => {
+        remove.disabled = true;
+        try {
+          showScheduled(id, await reminderRequest(id, { remove: reminder.reminderId }));
+        } catch (error) {
+          byId('reminder-status').textContent = error.message;
+          remove.disabled = false;
+        }
+      });
+      item.append(remove);
+      return item;
+    }));
+  }
+
+  async function refreshScheduled() {
+    const select = byId('exam');
+    const id = select.value;
+    byId('scheduled').hidden = true;
+    byId('reminder-status').textContent = '';
+    const start = Number(select.selectedOptions[0]?.dataset.start);
+    for (const input of document.querySelectorAll('[name="preset"]')) {
+      input.checked = false;
+      input.disabled = !id || start - Number(input.value) * 60_000 <= Date.now();
+    }
+    byId('minutes').value = '';
+    if (!id) return;
+    try {
+      showScheduled(id, await reminderRequest(id, { list: true }));
+    } catch (error) {
+      if (select.value === id) byId('reminder-status').textContent = error.message;
+    }
+  }
+
+  byId('exam').addEventListener('change', refreshScheduled);
   bind('reminder', 'reminder-status', async () => {
-    const id = encodeURIComponent(byId('exam').value);
-    const minutesBefore = byId('minutes').valueAsNumber;
-    const start = Number(byId('exam').selectedOptions[0].dataset.start);
-    if (start <= Date.now()) {
-      await loadSaved();
-      return 'This exam has already started. Choose an upcoming exam.';
+    const select = byId('exam');
+    const id = select.value;
+    const start = Number(select.selectedOptions[0].dataset.start);
+    const offsets = Array.from(document.querySelectorAll('[name="preset"]:checked'),
+      input => Number(input.value));
+    const custom = byId('minutes');
+    if (custom.value) offsets.push(custom.valueAsNumber);
+    if (!offsets.length) return 'Choose a preset or enter a custom interval.';
+    if (offsets.some(minutes => start - minutes * 60_000 <= Date.now())) {
+      return 'A selected reminder time has passed. Choose a shorter interval.';
     }
-    if (start - minutesBefore * 60_000 <= Date.now()) {
-      return 'That reminder time has already passed. Enter fewer minutes before the exam.';
+    const reminders = await reminderRequest(id, { minutesBefore: offsets });
+    showScheduled(id, reminders);
+    if (select.value === id) {
+      for (const input of document.querySelectorAll('[name="preset"]:checked')) input.checked = false;
+      custom.value = '';
     }
-    const result = await api(`/saved-exams/${id}/reminder`, 'PUT', { minutesBefore });
-    const due = nairobi.format(new Date(result.dueAt));
-    return result.status === 'published'
-      ? 'Reminder already published. Refresh the inbox to see it.'
-      : `Reminder scheduled for ${due} (Nairobi). Refresh the inbox after that time.`;
+    return 'Reminder schedule saved. Due reminders appear in your inbox.';
   });
 
   bind('inbox', 'inbox-status', async () => {

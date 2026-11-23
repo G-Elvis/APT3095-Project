@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import re
@@ -17,6 +18,37 @@ def open_table():
     )
 
 
+MAX_REMINDERS = 20
+
+
+def utc_text(value):
+    return value.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def read_reminders(row):
+    if "remindersJson" in row:
+        return json.loads(row["remindersJson"])
+    if row.get("reminderDueAt"):
+        return [{
+            "reminderId": row["RowKey"],
+            "dueAt": row["reminderDueAt"],
+            "status": row["reminderStatus"],
+            "publishedAt": row.get("reminderPublishedAt", ""),
+        }]
+    return []
+
+
+def write_reminders(table, row, reminders):
+    next_due = min((r["dueAt"] for r in reminders if r["status"] == "pending"), default="")
+    table.update_entity(
+        {"PartitionKey": row["PartitionKey"], "RowKey": row["RowKey"],
+         "remindersJson": json.dumps(reminders), "nextReminderDueAt": next_due,
+         "reminderStatus": ""},
+        mode=UpdateMode.MERGE, etag=row.metadata["etag"],
+        match_condition=MatchConditions.IfNotModified,
+    )
+
+
 def set_reminder(req):
     session, is_new = session_from(req)
     saved_id = req.route_params["id"]
@@ -28,35 +60,53 @@ def set_reminder(req):
         body = req.get_json()
     except ValueError:
         return reply(400, {"error": "Invalid JSON"})
-    minutes = body.get("minutesBefore") if isinstance(body, dict) else None
-    if type(minutes) is not int or not 1 <= minutes <= 525600:
-        return reply(400, {"error": "minutesBefore must be an integer between 1 and 525600"})
-
+    if not isinstance(body, dict):
+        return reply(400, {"error": "Expected a JSON object"})
     try:
         with open_table() as table:
             row = table.get_entity(session, saved_id)
+            reminders = read_reminders(row)
+            if body == {"list": True}:
+                return reply(200, reminders)
+            if "remove" in body:
+                remaining = [r for r in reminders if not (
+                    r["reminderId"] == body["remove"] and r["status"] == "pending"
+                )]
+                if remaining != reminders:
+                    write_reminders(table, row, remaining)
+                return reply(200, remaining)
+            offsets = body.get("minutesBefore")
+            single = not isinstance(offsets, list)
+            if single:
+                offsets = [offsets]
+            if not offsets or len(offsets) > MAX_REMINDERS or any(
+                type(value) is not int or not 1 <= value <= 525600 for value in offsets
+            ):
+                return reply(400, {"error": "Choose 1–20 intervals between 1 and 525600 minutes."})
             slot = SLOTS_BY_ID.get(row["slotId"])
             if slot is None:
                 return reply(404, {"error": "Exam slot not found"})
             start = datetime.fromisoformat(f'{slot["examDate"]}T{slot["examStart"]}')
             start = start.replace(tzinfo=ZoneInfo(slot["timeZone"])).astimezone(timezone.utc)
-            due = start - timedelta(minutes=minutes)
-            if due <= datetime.now(timezone.utc):
-                return reply(400, {"error": "Reminder deadline has already passed"})
-            due_at = due.strftime("%Y-%m-%dT%H:%M:%SZ")
-            result = {"reminderId": saved_id, "savedExamId": saved_id,
-                      "dueAt": due_at, "status": "pending"}
-            if row.get("reminderDueAt") == due_at:
-                result["status"] = row["reminderStatus"]
-                return reply(200, result)
-            table.update_entity(
-                {"PartitionKey": session, "RowKey": saved_id,
-                 "reminderDueAt": due_at, "reminderStatus": "pending",
-                 "reminderPublishedAt": ""},
-                mode=UpdateMode.MERGE, etag=row.metadata["etag"],
-                match_condition=MatchConditions.IfNotModified,
-            )
-            return reply(200 if row.get("reminderDueAt") else 201, result)
+            now = datetime.now(timezone.utc)
+            by_due = {r["dueAt"]: r for r in reminders}
+            requested = []
+            for minutes in dict.fromkeys(offsets):
+                due = start - timedelta(minutes=minutes)
+                due_at = utc_text(due)
+                if due_at not in by_due:
+                    if due <= now:
+                        return reply(400, {"error": "One or more reminder times have already passed."})
+                    by_due[due_at] = {"reminderId": f"{saved_id}-{minutes}", "dueAt": due_at,
+                                      "status": "pending", "minutesBefore": minutes}
+                requested.append(by_due[due_at])
+            if len(by_due) > MAX_REMINDERS:
+                return reply(400, {"error": "Each exam can have up to 20 reminders."})
+            changed = len(by_due) != len(reminders)
+            if changed:
+                write_reminders(table, row, list(by_due.values()))
+            payload = dict(requested[0], savedExamId=saved_id) if single else list(by_due.values())
+            return reply(201 if changed else 200, payload)
     except ResourceNotFoundError:
         return reply(404, {"error": "Saved exam not found"})
     except ResourceModifiedError:
@@ -67,22 +117,20 @@ def set_reminder(req):
 
 
 def publish_due_reminders():
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = utc_text(datetime.now(timezone.utc))
     published = 0
     with open_table() as table:
-        rows = table.query_entities(
-            "reminderStatus eq 'pending' and reminderDueAt le @now",
-            parameters={"now": now},
-        )
-        for row in rows:
+        # Read due times in Python for both legacy and multi-reminder rows.
+        for row in table.list_entities():
+            reminders = read_reminders(row)
+            due = [r for r in reminders if r["status"] == "pending" and r["dueAt"] <= now]
+            if not due:
+                continue
+            for reminder in due:
+                reminder.update(status="published", publishedAt=now)
             try:
-                table.update_entity(
-                    {"PartitionKey": row["PartitionKey"], "RowKey": row["RowKey"],
-                     "reminderStatus": "published", "reminderPublishedAt": now},
-                    mode=UpdateMode.MERGE, etag=row.metadata["etag"],
-                    match_condition=MatchConditions.IfNotModified,
-                )
-                published += 1
+                write_reminders(table, row, reminders)
+                published += len(due)
             except (ResourceModifiedError, ResourceNotFoundError):
                 continue
     logging.info("Published %d due exam reminders", published)
@@ -94,15 +142,12 @@ def list_inbox(req):
         return reply(200, [], session)
     try:
         with open_table() as table:
-            rows = table.query_entities(
-                "PartitionKey eq @session and reminderStatus eq 'published'",
-                parameters={"session": session},
-            )
+            rows = table.query_entities("PartitionKey eq @session", parameters={"session": session})
             notices = [
-                {"reminderId": row["RowKey"], "savedExamId": row["RowKey"],
-                 "courseLabel": row["courseLabel"], "dueAt": row["reminderDueAt"],
-                 "status": "published", "publishedAt": row["reminderPublishedAt"]}
+                dict(reminder, savedExamId=row["RowKey"], courseLabel=row["courseLabel"])
                 for row in rows
+                for reminder in read_reminders(row)
+                if reminder["status"] == "published"
             ]
         return reply(200, sorted(notices, key=lambda item: item["publishedAt"], reverse=True))
     except (AzureError, KeyError, ValueError) as error:
