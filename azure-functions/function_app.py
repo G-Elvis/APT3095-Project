@@ -37,3 +37,11 @@ def reminder_timer(timer: func.TimerRequest) -> None:
 @app.route(route="inbox", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def inbox(req: func.HttpRequest) -> func.HttpResponse:
     return list_inbox(req)
+
+
+@app.route(route="planner", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+def planner_page(req: func.HttpRequest) -> func.HttpResponse:
+    from pathlib import Path
+
+    page = Path(__file__).with_name("planner.html")
+    return func.HttpResponse(page.read_bytes(), mimetype="text/html", charset="utf-8")

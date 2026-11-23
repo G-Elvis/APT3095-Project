@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>USIU Exam Planner &amp; Reminder</title>
+<style>
+  :root { color-scheme: light; --blue:#263782; --ink:#17234b; --gold:#ffc600; --paper:#f7f4ec; --line:#ded8c9; --muted:#52596a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font:1rem/1.55 system-ui,sans-serif; }
+  [hidden] { display:none !important; }
+  .masthead { background:#fff; border-top:5px solid var(--gold); border-bottom:1px solid var(--line); }
+  .wrap { width:min(72rem, calc(100% - 3rem)); margin-inline:auto; }
+  .masthead .wrap { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding-block:.85rem; }
+  .wordmark { display:block; width:8rem; height:auto; }
+  nav { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:.2rem; padding:.25rem; border:1px solid #d7dced; border-radius:1rem; background:#f3f5fb; }
+  nav a { display:flex; align-items:center; justify-content:center; min-height:44px; padding:.45rem .85rem; border-radius:.72rem; color:var(--blue); font-size:.875rem; font-weight:650; text-decoration:none; white-space:nowrap; transition:background-color .16s ease,color .16s ease; }
+  nav a:hover { background:#e2e7f9; color:#172456; }
+  nav a:focus-visible { outline-offset:-3px; }
+  nav a:first-child { background:var(--blue); color:white; }
+  nav a:first-child:hover { background:#172456; }
+  @media (prefers-reduced-motion:reduce) { nav a { transition:none; } }
+  .hero { color:white; background:#202e71; border-bottom:4px solid var(--gold); }
+  .hero .wrap { padding-block:clamp(2.6rem,6vw,5rem); }
+  .term { display:flex; align-items:center; gap:.75rem; margin:0 0 .8rem; color:#ffdc60; font-size:.75rem; font-weight:750; letter-spacing:.15em; text-transform:uppercase; }
+  .term::before { content:""; width:2rem; height:1px; background:currentColor; }
+  h1,h2 { font-family:Georgia, 'Times New Roman', serif; font-weight:normal; }
+  h1 { margin:0; font-size:clamp(2rem,5.7vw,4.8rem); line-height:1.09; letter-spacing:-.035em; text-wrap:balance; }
+  h1 span { white-space:nowrap; }
+  .hero p:last-child { margin:1rem 0 0; color:#e7eaff; }
+  .workspace { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(0,1fr); gap:1.35rem; align-items:start; padding-block:2rem 3rem; }
+  .side { display:grid; gap:1.35rem; min-width:0; }
+  section { min-width:0; background:#fffdf8; padding:clamp(1.1rem,3vw,2rem); border:1px solid var(--line); border-top:3px solid var(--blue); scroll-margin-top:1rem; }
+  h2 { margin:0 0 .85rem; font-size:clamp(1.6rem,3vw,2.15rem); line-height:1.15; letter-spacing:-.025em; }
+  .hint { color:var(--muted); margin:0 0 1.25rem; }
+  form { display:grid; gap:.55rem; }
+  form + form { margin-top:1.2rem; padding-top:1.2rem; border-top:1px solid var(--line); }
+  label { font-size:.875rem; font-weight:650; }
+  input, select, button { font:inherit; border-radius:.25rem; padding:.65rem .85rem; min-height:44px; }
+  input, select { width:100%; min-width:0; background:white; color:var(--ink); border:1px solid #9d9cab; }
+  button { background:var(--blue); color:white; border:1px solid var(--blue); font-weight:650; cursor:pointer; width:fit-content; margin-top:.25rem; }
+  button:hover { background:#172456; }
+  #inbox button { background:transparent; color:var(--blue); }
+  #inbox button:hover { background:#e9edff; }
+  button:disabled { opacity:.65; cursor:wait; }
+  :focus-visible { outline:3px solid #ad7400; outline-offset:3px; }
+  output { display:block; color:var(--muted); font-size:.9rem; margin-top:.6rem; overflow-wrap:anywhere; }
+  output:empty, ul:empty { display:none; }
+  ul { margin:.5rem 0 1rem; padding:0; list-style:none; }
+  li { padding:.65rem 0; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+  .site-footer { background:#172456; color:#fff; border-top:3px solid var(--gold); padding-block:clamp(1.25rem,3vw,2rem); }
+  .site-footer p { margin:0; font-size:.875rem; }
+  .site-footer strong { font-family:Georgia, 'Times New Roman', serif; font-size:1.1rem; font-weight:normal; }
+  .footer-dash { color:var(--gold); padding-inline:.45em; }
+  .footer-time { color:#e7eaff; }
+  @media (max-width:720px) {
+    .wrap { width:calc(100% - 2rem); }
+    .workspace { grid-template-columns:minmax(0,1fr); }
+    nav a { padding-inline:.65rem; }
+  }
+  @media (max-width:540px) {
+    .masthead .wrap { flex-direction:column; align-items:flex-start; gap:.7rem; }
+    .wordmark { width:6.5rem; }
+    nav { width:100%; }
+    nav a { flex:1 0 auto; padding-inline:.45rem; font-size:.82rem; }
+  }
+</style>
+<header class="masthead">
+  <div class="wrap">
+    <img class="wordmark" src="data:image/png;base64,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" alt="United States International University–Africa">
+    <nav aria-label="Planner sections">
+      <a href="#find">Find an exam</a>
+      <a href="#saved">Saved exams</a>
+      <a href="#reminders">Inbox</a>
+    </nav>
+  </div>
+</header>
+<main>
+  <header class="hero">
+    <div class="wrap">
+      <p class="term">Undergraduate</p>
+      <h1>USIU Exam Planner <span>&amp; Reminder</span></h1>
+      <p>Find your exam slot, save it, and set a reminder.</p>
+    </div>
+  </header>
+  <div class="wrap workspace">
+  <section id="find" aria-labelledby="find-heading">
+    <h2 id="find-heading">Find and save an exam</h2>
+    <p class="hint">Choose an exam period to see upcoming slots, then match your regular class time.</p>
+    <form id="lookup">
+      <label for="period">Exam period</label>
+      <select id="period"><option value="final">Final</option><option value="mid">Mid-semester</option></select>
+      <button>Load timetable</button>
+    </form>
+    <form id="save" hidden>
+      <label for="slot">Class pattern and time → exam date and time (Nairobi)</label>
+      <select id="slot" required></select>
+      <label for="course">Course name or code</label>
+      <input id="course" required maxlength="80" placeholder="APT3095">
+      <button>Save exam</button>
+    </form>
+    <output id="lookup-status" role="status"></output>
+    <output id="save-status" role="status"></output>
+  </section>
+  <div class="side">
+  <section id="saved" aria-labelledby="saved-heading">
+    <h2 id="saved-heading">Saved exams</h2>
+    <ul id="exam-list"></ul>
+    <form id="reminder" hidden>
+      <label for="exam">Saved exam</label>
+      <select id="exam" required></select>
+      <label for="minutes">Remind me this many minutes before the exam</label>
+      <input id="minutes" type="number" min="1" max="525600" step="1" value="60" required>
+      <button>Set reminder</button>
+    </form>
+    <output id="saved-status" role="status"></output>
+    <output id="reminder-status" role="status"></output>
+  </section>
+  <section id="reminders" aria-labelledby="inbox-heading">
+    <h2 id="inbox-heading">Reminder inbox</h2>
+    <ul id="notices"></ul>
+    <form id="inbox"><button>Refresh inbox</button></form>
+    <output id="inbox-status" role="status"></output>
+  </section>
+  </div>
+  </div>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <p><strong>APT3095 Group7 FaaS Cloud Project</strong> <span class="footer-dash">–</span> <span class="footer-time">Exam times shown in Nairobi time (EAT)</span></p>
+  </div>
+</footer>
+<script>
+  const byId = id => document.getElementById(id);
+  const nairobi = new Intl.DateTimeFormat('en-KE', {
+    timeZone: 'Africa/Nairobi', dateStyle: 'medium', timeStyle: 'short'
+  });
+
+  async function api(path, method = 'GET', body) {
+    const options = { method, credentials: 'same-origin' };
+    if (body !== undefined) {
+      options.headers = { 'Content-Type': 'application/json' };
+      options.body = JSON.stringify(body);
+    }
+    const response = await fetch(path, options);
+    const data = await response.json().catch(() => null);
+    if (!response.ok || data === null) {
+      throw new Error(data?.error || `Request failed (HTTP ${response.status}).`);
+    }
+    return data;
+  }
+
+  function list(id, items) {
+    byId(id).replaceChildren(...items.map(text => {
+      const item = document.createElement('li');
+      item.textContent = text;
+      return item;
+    }));
+  }
+
+  // Nairobi is UTC+03:00 for the timetable, independent of the browser timezone.
+  function examStart(exam) {
+    return Date.parse(`${exam.examDate}T${exam.examStart}:00+03:00`);
+  }
+
+  function canSchedule(exam) {
+    return examStart(exam) - Date.now() > 60_000;
+  }
+
+  async function loadSaved() {
+    const exams = await api('/saved-exams');
+    const label = exam => `${exam.courseLabel} · ${exam.examDate} at ${exam.examStart}`;
+    const eligible = exams.filter(canSchedule);
+    list('exam-list', exams.map(exam => {
+      const past = examStart(exam) <= Date.now();
+      return past ? `${label(exam)} · Past exam` : label(exam);
+    }));
+    byId('exam').replaceChildren(...eligible.map(exam => {
+      const option = new Option(label(exam), exam.savedExamId);
+      option.dataset.start = examStart(exam);
+      return option;
+    }));
+    byId('reminder').hidden = eligible.length === 0;
+    byId('saved-status').textContent = !exams.length ? 'No exams saved in this session.'
+      : !eligible.length ? 'No saved exams have time left to schedule a reminder.' : '';
+  }
+
+  async function loadInbox() {
+    const notices = await api('/inbox');
+    list('notices', notices.map(notice =>
+      `${notice.courseLabel} · Published ${nairobi.format(new Date(notice.publishedAt))} (Nairobi)`
+    ));
+    return notices.length ? '' : 'No published reminders yet.';
+  }
+
+  function bind(formId, statusId, action) {
+    const form = byId(formId);
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = form.querySelector('button');
+      button.disabled = true;
+      const status = byId(statusId);
+      status.textContent = '';
+      try {
+        status.textContent = await action();
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+
+  const sessionReady = loadSaved().catch(error => {
+    byId('saved-status').textContent = error.message;
+  });
+  sessionReady.then(async () => {
+    try {
+      byId('inbox-status').textContent = await loadInbox();
+    } catch (error) {
+      byId('inbox-status').textContent = error.message;
+    }
+  });
+
+  bind('lookup', 'lookup-status', async () => {
+    const period = byId('period').value;
+    byId('save').hidden = true;
+    const timetable = await api(`/exam-slots?period=${period}`);
+    const slots = timetable.filter(slot => examStart(slot) > Date.now());
+    if (period !== byId('period').value) return 'Load the newly selected period.';
+    byId('slot').replaceChildren(...slots.map(slot => new Option(
+      `${slot.pattern} ${slot.classStart}–${slot.classEnd} → ${slot.examDate} ${slot.examStart}–${slot.examEnd}`,
+      slot.slotId
+    )));
+    byId('save').hidden = slots.length === 0;
+    return slots.length ? '' : 'No upcoming exams in this period. Try another exam period.';
+  });
+  byId('period').addEventListener('change', () => { byId('save').hidden = true; });
+
+  bind('save', 'save-status', async () => {
+    await sessionReady;
+    await api('/saved-exams', 'POST', {
+      slotId: byId('slot').value, courseLabel: byId('course').value.trim()
+    });
+    byId('course').value = '';
+    try {
+      await loadSaved();
+    } catch (error) {
+      return `Exam saved. Reload the page to refresh saved exams. ${error.message}`;
+    }
+    return 'Exam saved.';
+  });
+
+  bind('reminder', 'reminder-status', async () => {
+    const id = encodeURIComponent(byId('exam').value);
+    const minutesBefore = byId('minutes').valueAsNumber;
+    const start = Number(byId('exam').selectedOptions[0].dataset.start);
+    if (start <= Date.now()) {
+      await loadSaved();
+      return 'This exam has already started. Choose an upcoming exam.';
+    }
+    if (start - minutesBefore * 60_000 <= Date.now()) {
+      return 'That reminder time has already passed. Enter fewer minutes before the exam.';
+    }
+    const result = await api(`/saved-exams/${id}/reminder`, 'PUT', { minutesBefore });
+    const due = nairobi.format(new Date(result.dueAt));
+    return result.status === 'published'
+      ? 'Reminder already published. Refresh the inbox to see it.'
+      : `Reminder scheduled for ${due} (Nairobi). Refresh the inbox after that time.`;
+  });
+
+  bind('inbox', 'inbox-status', async () => {
+    await sessionReady;
+    return loadInbox();
+  });
+</script>
+</html>
